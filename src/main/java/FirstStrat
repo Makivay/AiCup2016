@@ -1,15 +1,11 @@
 import model.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public final class MyStrategy implements Strategy {
     private static final double WAYPOINT_RADIUS = 100.0D;
 
     private static final double LOW_HP_FACTOR = 0.25D;
-
-    private static final double ENEMY_TO_CLOSE_FACTOR = 0.5D;
-    private static final double ENEMY_TO_FAR_FACTOR = 0.9D;
 
     /**
      * Ключевые точки для каждой линии, позволяющие упростить управление перемещением волшебника.
@@ -29,8 +25,6 @@ public final class MyStrategy implements Strategy {
     private Game game;
     private Move move;
 
-    private int prevTurnLife;
-
     /**
      * Основной метод стратегии, осуществляющий управление волшебником.
      * Вызывается каждый тик для каждого волшебника.
@@ -47,7 +41,7 @@ public final class MyStrategy implements Strategy {
 
         // Постоянно двигаемся из-стороны в сторону, чтобы по нам было сложнее попасть.
         // Считаете, что сможете придумать более эффективный алгоритм уклонения? Попробуйте! ;)
-//        move.setStrafeSpeed(random.nextBoolean() ? game.getWizardStrafeSpeed() : -game.getWizardStrafeSpeed());
+        move.setStrafeSpeed(random.nextBoolean() ? game.getWizardStrafeSpeed() : -game.getWizardStrafeSpeed());
 
         // Если осталось мало жизненной энергии, отступаем к предыдущей ключевой точке на линии.
         if (self.getLife() < self.getMaxLife() * LOW_HP_FACTOR) {
@@ -55,39 +49,33 @@ public final class MyStrategy implements Strategy {
             return;
         }
 
-        // Выбираем цель
-        final LivingUnit bestTarget = getBestTarget();
-        final LivingUnit nearestTarget = getNearestTarget();
-
-        //Проверяем не получен ли урон
-        if((nearestTarget != null && self.getDistanceTo(nearestTarget) < self.getCastRange() * ENEMY_TO_CLOSE_FACTOR) || (prevTurnLife > self.getLife())){
-            move.setSpeed(-game.getWizardBackwardSpeed());
-        } else if(bestTarget != null && self.getDistanceTo(nearestTarget) >= self.getCastRange() * ENEMY_TO_FAR_FACTOR){
-            move.setSpeed(game.getWizardForwardSpeed());
-        }
+        LivingUnit nearestTarget = getNearestTarget();
 
         // Если видим противника ...
-        if (bestTarget != null) {
-            double distance = self.getDistanceTo(bestTarget);
+        if (nearestTarget != null) {
+            double distance = self.getDistanceTo(nearestTarget);
 
-            double angle = self.getAngleTo(bestTarget);
+            // ... и он в пределах досягаемости наших заклинаний, ...
+            if (distance <= self.getCastRange()) {
+                double angle = self.getAngleTo(nearestTarget);
 
-            // ... то поворачиваемся к цели.
-            move.setTurn(angle);
+                // ... то поворачиваемся к цели.
+                move.setTurn(angle);
 
-            // Если цель перед нами, ...
-            if (StrictMath.abs(angle) < game.getStaffSector() / 2.0D) {
-                // ... то атакуем.
-                move.setAction(ActionType.MAGIC_MISSILE);
-                move.setCastAngle(angle);
-                move.setMinCastDistance(distance - bestTarget.getRadius() + game.getMagicMissileRadius());
+                // Если цель перед нами, ...
+                if (StrictMath.abs(angle) < game.getStaffSector() / 2.0D) {
+                    // ... то атакуем.
+                    move.setAction(ActionType.MAGIC_MISSILE);
+                    move.setCastAngle(angle);
+                    move.setMinCastDistance(distance - nearestTarget.getRadius() + game.getMagicMissileRadius());
+                }
+
+                return;
             }
-        } else {
-            // Если нет других действий, просто продвигаемся вперёд.
-            goTo(getNextWaypoint());
         }
 
-        prevTurnLife = self.getLife();
+        // Если нет других действий, просто продвигаемся вперёд.
+        goTo(getNextWaypoint());
     }
 
     /**
@@ -246,19 +234,6 @@ public final class MyStrategy implements Strategy {
     }
 
     /**
-     * Выбираем цель для атаки
-     */
-    private LivingUnit getBestTarget() {
-        final List<LivingUnit> potentialNotNeutralTargets = getPotentialNotNeutralTargets();
-        final List<LivingUnit> wizards = potentialNotNeutralTargets.stream().filter(unit -> unit instanceof Wizard).collect(Collectors.toList());
-        if(wizards.size() > 0){
-            return getMinimalHpTarget(wizards);
-        } else{
-            return getMinimalHpTarget(potentialNotNeutralTargets);
-        }
-    }
-
-    /**
      * Находим ближайшую цель для атаки, независимо от её типа и других характеристик.
      */
     private LivingUnit getNearestTarget() {
@@ -267,13 +242,6 @@ public final class MyStrategy implements Strategy {
         targets.addAll(Arrays.asList(world.getWizards()));
         targets.addAll(Arrays.asList(world.getMinions()));
 
-        return getNearestTarget(targets);
-    }
-
-    /**
-     * Находим ближайшую цель для атаки, независимо от её типа и других характеристик.
-     */
-    private LivingUnit getNearestTarget(List<LivingUnit> targets) {
         LivingUnit nearestTarget = null;
         double nearestTargetDistance = Double.MAX_VALUE;
 
@@ -291,50 +259,6 @@ public final class MyStrategy implements Strategy {
         }
 
         return nearestTarget;
-    }
-
-    /**
-     * Получает список врагов, доступных для атаки
-     */
-    private List<LivingUnit> getPotentialNotNeutralTargets() {
-        final List<LivingUnit> livingUnits = new ArrayList<>();
-        livingUnits.addAll(Arrays.asList(world.getBuildings()));
-        livingUnits.addAll(Arrays.asList(world.getWizards()));
-        livingUnits.addAll(Arrays.asList(world.getMinions()));
-
-        return livingUnits
-                .stream()
-                .filter(unit -> !unit.getFaction().equals(Faction.NEUTRAL))
-                .filter(unit -> inDifferentFactions(self, unit))
-                .filter(unit -> self.getDistanceTo(unit) <= self.getCastRange())
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Определяет являются ли юниты врагами
-     */
-    private boolean inDifferentFactions(LivingUnit unit1, LivingUnit unit2) {
-        return !unit1.getFaction().equals(unit2.getFaction());
-    }
-
-    /**
-     * Выбираем юнита с наименьшим ХП
-     */
-    private LivingUnit getMinimalHpTarget(List<LivingUnit> livingUnits) {
-
-        if (livingUnits.size() <= 0) {
-            return null;
-        }
-
-        LivingUnit lowHpUnit = livingUnits.get(0);
-
-        for (LivingUnit unit : livingUnits) {
-            if (lowHpUnit.getLife() > unit.getLife()) {
-                lowHpUnit = unit;
-            }
-        }
-
-        return lowHpUnit;
     }
 
     /**

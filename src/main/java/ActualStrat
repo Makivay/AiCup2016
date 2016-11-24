@@ -8,9 +8,6 @@ public final class MyStrategy implements Strategy {
 
     private static final double LOW_HP_FACTOR = 0.25D;
 
-    private static final double ENEMY_TO_CLOSE_FACTOR = 0.5D;
-    private static final double ENEMY_TO_FAR_FACTOR = 0.9D;
-
     /**
      * Ключевые точки для каждой линии, позволяющие упростить управление перемещением волшебника.
      * <p>
@@ -29,8 +26,6 @@ public final class MyStrategy implements Strategy {
     private Game game;
     private Move move;
 
-    private int prevTurnLife;
-
     /**
      * Основной метод стратегии, осуществляющий управление волшебником.
      * Вызывается каждый тик для каждого волшебника.
@@ -47,7 +42,7 @@ public final class MyStrategy implements Strategy {
 
         // Постоянно двигаемся из-стороны в сторону, чтобы по нам было сложнее попасть.
         // Считаете, что сможете придумать более эффективный алгоритм уклонения? Попробуйте! ;)
-//        move.setStrafeSpeed(random.nextBoolean() ? game.getWizardStrafeSpeed() : -game.getWizardStrafeSpeed());
+        move.setStrafeSpeed(random.nextBoolean() ? game.getWizardStrafeSpeed() : -game.getWizardStrafeSpeed());
 
         // Если осталось мало жизненной энергии, отступаем к предыдущей ключевой точке на линии.
         if (self.getLife() < self.getMaxLife() * LOW_HP_FACTOR) {
@@ -55,16 +50,7 @@ public final class MyStrategy implements Strategy {
             return;
         }
 
-        // Выбираем цель
         final LivingUnit bestTarget = getBestTarget();
-        final LivingUnit nearestTarget = getNearestTarget();
-
-        //Проверяем не получен ли урон
-        if((nearestTarget != null && self.getDistanceTo(nearestTarget) < self.getCastRange() * ENEMY_TO_CLOSE_FACTOR) || (prevTurnLife > self.getLife())){
-            move.setSpeed(-game.getWizardBackwardSpeed());
-        } else if(bestTarget != null && self.getDistanceTo(nearestTarget) >= self.getCastRange() * ENEMY_TO_FAR_FACTOR){
-            move.setSpeed(game.getWizardForwardSpeed());
-        }
 
         // Если видим противника ...
         if (bestTarget != null) {
@@ -82,12 +68,12 @@ public final class MyStrategy implements Strategy {
                 move.setCastAngle(angle);
                 move.setMinCastDistance(distance - bestTarget.getRadius() + game.getMagicMissileRadius());
             }
-        } else {
-            // Если нет других действий, просто продвигаемся вперёд.
-            goTo(getNextWaypoint());
+
+            return;
         }
 
-        prevTurnLife = self.getLife();
+        // Если нет других действий, просто продвигаемся вперёд.
+        goTo(getNextWaypoint());
     }
 
     /**
@@ -250,12 +236,7 @@ public final class MyStrategy implements Strategy {
      */
     private LivingUnit getBestTarget() {
         final List<LivingUnit> potentialNotNeutralTargets = getPotentialNotNeutralTargets();
-        final List<LivingUnit> wizards = potentialNotNeutralTargets.stream().filter(unit -> unit instanceof Wizard).collect(Collectors.toList());
-        if(wizards.size() > 0){
-            return getMinimalHpTarget(wizards);
-        } else{
-            return getMinimalHpTarget(potentialNotNeutralTargets);
-        }
+        return getMinimalHpTarget(potentialNotNeutralTargets);
     }
 
     /**
