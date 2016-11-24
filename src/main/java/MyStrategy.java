@@ -62,7 +62,7 @@ public final class MyStrategy implements Strategy {
         //Проверяем не получен ли урон
         if((nearestTarget != null && self.getDistanceTo(nearestTarget) < self.getCastRange() * ENEMY_TO_CLOSE_FACTOR) || (prevTurnLife > self.getLife())){
             move.setSpeed(-game.getWizardBackwardSpeed());
-        } else if(bestTarget != null && self.getDistanceTo(nearestTarget) >= self.getCastRange() * ENEMY_TO_FAR_FACTOR){
+        } else if(bestTarget != null && self.getDistanceTo(bestTarget) >= self.getCastRange() * ENEMY_TO_FAR_FACTOR){
             move.setSpeed(game.getWizardForwardSpeed());
         }
 
